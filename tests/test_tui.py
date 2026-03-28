@@ -61,6 +61,45 @@ def test_settings_dialog_method_exists():
     assert 'def _show_settings_dialog' in source
 
 
+def test_daemonize_is_importable():
+    import inspect
+    import claude_widget
+    source = inspect.getsource(claude_widget)
+    assert 'def _daemonize' in source
+
+
+def test_daemonize_double_forks(monkeypatch):
+    """_daemonize() must fork twice, setsid, chdir('/'), and redirect I/O."""
+    import os
+    import claude_widget
+
+    calls = []
+    fork_results = iter([0, 0])  # child path for both forks
+
+    monkeypatch.setattr(os, 'fork',   lambda: next(fork_results))
+    monkeypatch.setattr(os, 'setsid', lambda: calls.append('setsid'))
+    monkeypatch.setattr(os, 'chdir',  lambda p: calls.append(f'chdir:{p}'))
+    monkeypatch.setattr(os, 'dup2',   lambda fd, fd2: calls.append(f'dup2:{fd2}'))
+
+    opened_files = []
+    original_open = open
+
+    def mock_open(path, *args, **kwargs):
+        opened_files.append(str(path))
+        return original_open(os.devnull, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.open', mock_open)
+
+    claude_widget._daemonize()
+
+    assert 'setsid' in calls
+    assert 'chdir:/' in calls
+    # stdin (fd 0), stdout (fd 1), stderr (fd 2) all redirected via dup2
+    assert 'dup2:0' in calls
+    assert 'dup2:1' in calls
+    assert 'dup2:2' in calls
+
+
 def test_settings_values_applied_to_config():
     import claude_widget as cw
 
