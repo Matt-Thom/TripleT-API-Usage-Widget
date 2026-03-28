@@ -4,6 +4,11 @@ Monitor your Claude.ai plan usage at a glance. Displays live message counts, pro
 
 Built for **Linux Mint / Cinnamon** but works on any Linux desktop with GTK3.
 
+I'm thinking of what other features I might add
+- [ ] Windows Support
+- [ ] Mac OS Support
+- [ ] Alternative AI usage (Google, OpenAI)
+
 ---
 
 ## Modes
@@ -29,14 +34,14 @@ A live terminal dashboard in the style of `htop`. Runs in any terminal — no de
 
 ```
 ╭─ ● ◆ Claude Pro ──────────────────── 2m ago ─╮
-│ Messages                                       │
-│ ████████████░░░░░░░░  45/100 /day              │
-│ Projects                                       │
-│ ███░░░░░░░░░░░░░░░░░  3/20                     │
-│ Storage                                        │
-│ ████████░░░░░░░░░░░░  2.1/5 GB                 │
-│                           Resets in 4h 23m     │
-╰────────────────────────────────────────────────╯
+│ Messages                                     │
+│ ████████████░░░░░░░░  45/100 /day            │
+│ Projects                                     │
+│ ███░░░░░░░░░░░░░░░░░  3/20                   │
+│ Storage                                      │
+│ ████████░░░░░░░░░░░░  2.1/5 GB               │
+│                           Resets in 4h 23m   │
+╰──────────────────────────────────────────────╯
 ```
 
 Both modes share the same colour coding: **purple** (ok) → **amber** (≥75%) → **red** (≥90%).
