@@ -687,9 +687,16 @@ class ClaudeWidget(Gtk.Window):
         self.connect('button-release-event', self._on_button_release)
         self.connect('motion-notify-event',  self._on_motion)
         self.connect('destroy', Gtk.main_quit)
+        self.connect('draw', self._on_draw)
 
         # Fixed width; height is dynamic
         self.set_size_request(self.config.get('widget_width', 230), -1)
+
+    def _on_draw(self, _widget, cr) -> bool:
+        """Paint the window background so the RGBA visual renders visibly."""
+        cr.set_source_rgba(12/255, 11/255, 18/255, 0.95)
+        cr.paint()
+        return False
 
     def _position_window(self) -> None:
         """Position widget using config. Negative x = offset from right edge."""
