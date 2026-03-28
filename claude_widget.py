@@ -1266,6 +1266,52 @@ def run_tui(config: dict) -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+#  Daemon helper  (--daemon)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _daemonize() -> None:
+    """
+    Detach the process from the controlling terminal using the Unix
+    double-fork pattern.  After this function returns, the calling process
+    is the grandchild: a background process with no terminal attachment.
+
+    Steps:
+      1. Print a user-facing message (before the first fork so it appears).
+      2. First fork  — parent exits; child continues.
+      3. os.setsid() — child becomes new session leader, loses terminal.
+      4. Second fork — grandchild can never re-acquire a terminal.
+      5. os.chdir('/') — release any reference to the launch directory.
+      6. Redirect stdin → /dev/null, stdout/stderr → LOG_FILE (append).
+    """
+    print(f"Launching Claude Usage Widget in background…\n"
+          f"  Log: {LOG_FILE}\n"
+          f"  Stop: pkill -f claude_widget.py")
+
+    # ── First fork ────────────────────────────────────────────────────────
+    pid = os.fork()
+    if pid > 0:
+        sys.exit(0)          # Parent exits — terminal gets its prompt back
+
+    os.setsid()              # Become session leader
+
+    # ── Second fork ───────────────────────────────────────────────────────
+    pid = os.fork()
+    if pid > 0:
+        sys.exit(0)          # Intermediate child exits
+
+    # ── Grandchild: fully detached ────────────────────────────────────────
+    os.chdir('/')
+
+    with open(os.devnull, 'r') as devnull:
+        os.dup2(devnull.fileno(), sys.stdin.fileno())
+
+    log_fh = open(LOG_FILE, 'a')
+    os.dup2(log_fh.fileno(), sys.stdout.fileno())
+    os.dup2(log_fh.fileno(), sys.stderr.fileno())
+    log_fh.close()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 #  Setup Wizard (--setup)
 # ═════════════════════════════════════════════════════════════════════════════
 

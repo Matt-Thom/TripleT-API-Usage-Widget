@@ -71,15 +71,22 @@ def test_daemonize_is_importable():
 def test_daemonize_double_forks(monkeypatch):
     """_daemonize() must fork twice, setsid, chdir('/'), and redirect I/O."""
     import os
+    import sys
+    import unittest.mock as mock
     import claude_widget
 
     calls = []
-    fork_results = iter([0, 0])  # child path for both forks
+    fork_results = iter([0, 0])  # simulate child path for both forks
 
     monkeypatch.setattr(os, 'fork',   lambda: next(fork_results))
     monkeypatch.setattr(os, 'setsid', lambda: calls.append('setsid'))
     monkeypatch.setattr(os, 'chdir',  lambda p: calls.append(f'chdir:{p}'))
     monkeypatch.setattr(os, 'dup2',   lambda fd, fd2: calls.append(f'dup2:{fd2}'))
+
+    # pytest replaces stdin with a pseudofile — give all three real-looking filenos
+    monkeypatch.setattr(sys, 'stdin',  mock.MagicMock(fileno=lambda: 0))
+    monkeypatch.setattr(sys, 'stdout', mock.MagicMock(fileno=lambda: 1))
+    monkeypatch.setattr(sys, 'stderr', mock.MagicMock(fileno=lambda: 2))
 
     opened_files = []
     original_open = open
