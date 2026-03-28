@@ -663,7 +663,12 @@ class ClaudeWidget(Gtk.Window):
         self.set_title("Claude Usage")
         self.set_decorated(False)           # No titlebar
         self.set_resizable(False)
-        self.set_keep_below(True)           # Below other windows
+        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)  # Better than DOCK for visibility
+        
+        # Troubleshooting: Commenting out set_keep_below to ensure visibility.
+        # If the widget is hidden behind desktop icons or wallpaper, this is likely why.
+        # self.set_keep_below(True)           
+        
         self.set_skip_taskbar_hint(True)    # Hidden from taskbar
         self.set_skip_pager_hint(True)      # Hidden from pager / alt-tab
         self.stick()                        # All workspaces
@@ -673,6 +678,9 @@ class ClaudeWidget(Gtk.Window):
         visual = screen.get_rgba_visual()
         if visual:
             self.set_visual(visual)
+        else:
+            log.warning("RGBA visual not available — transparency will be disabled.")
+
         self.set_app_paintable(True)
         # Use GtkWidget.set_opacity instead of GtkWindow.set_opacity
         Gtk.Widget.set_opacity(self, self.config.get('opacity', 0.93))
@@ -694,34 +702,55 @@ class ClaudeWidget(Gtk.Window):
 
     def _on_draw(self, _widget, cr) -> bool:
         """Paint the window background so the RGBA visual renders visibly."""
-        cr.set_source_rgba(12/255, 11/255, 18/255, 0.95)
+        # Check if the visual is actually RGBA before painting with alpha
+        visual = self.get_visual()
+        is_rgba = visual and visual.get_depth() == 32
+        
+        if is_rgba:
+            cr.set_source_rgba(12/255, 11/255, 18/255, 0.95)
+        else:
+            cr.set_source_rgb(12/255, 11/255, 18/255)
+            
+        cr.set_operator(Gdk.CairoOperator.SOURCE)
         cr.paint()
         return False
 
     def _position_window(self) -> None:
-        """Position widget using config. Negative x = offset from right edge."""
+        """Position widget using config. Constrains to primary monitor if possible."""
         display = Gdk.Display.get_default()
         if not display:
+            log.warning("No display found, moving to (100, 100)")
             self.move(100, 100)
             return
 
-        # Calculate total virtual desktop width by summing monitors
-        sw = 0
-        for i in range(display.get_n_monitors()):
-            monitor = display.get_monitor(i)
-            sw += monitor.get_geometry().width
+        # Get primary monitor geometry
+        primary_monitor = display.get_primary_monitor()
+        if not primary_monitor:
+            primary_monitor = display.get_monitor(0)
+        
+        geom = primary_monitor.get_geometry()
+        log.info(f"Primary monitor detected: {geom.width}x{geom.height} at {geom.x},{geom.y}")
 
         px = self.config.get('position_x', -15)
         py = self.config.get('position_y', 50)
         w  = self.config.get('widget_width', 230)
 
-        # Negative x: compute from the far right of the entire virtual desktop
+        # Calculate position relative to primary monitor
+        # If px is negative, offset from the right edge of the primary monitor
         if px <= 0:
-            px = sw + px - w
+            final_x = geom.x + geom.width + px - w
+        else:
+            final_x = geom.x + px
 
-        final_x = max(0, px)
-        final_y = max(0, py)
-        log.debug(f"Positioning widget at {final_x}, {final_y} (Total Desktop Width: {sw})")
+        final_y = geom.y + py
+
+        # Safety check: ensure we aren't beyond the virtual desktop's right edge
+        # and stay within a reasonable horizontal limit (5120) if requested.
+        if final_x > 5120:
+            log.warning(f"Calculated X ({final_x}) is beyond 5120. Clamping.")
+            final_x = 4800 # Safe spot on a 5120 screen
+
+        log.info(f"Positioning widget at {final_x}, {final_y}")
         self.move(final_x, final_y)
 
     # ── UI construction ───────────────────────────────────────────────────────
@@ -780,6 +809,7 @@ class ClaudeWidget(Gtk.Window):
 
     def _show_error(self, msg: str) -> None:
         """Display an error message in the content area (called from main thread)."""
+        log.error(f"Showing error in widget: {msg.replace('\n', ' ')}")
         self._clear_content()
         self._dot.get_style_context().add_class('error')
         self._dot.get_style_context().remove_class('ok')
@@ -798,6 +828,7 @@ class ClaudeWidget(Gtk.Window):
         Rebuild content area from a normalised usage dict.
         Always called from the GLib main thread via idle_add.
         """
+        log.debug("Rendering usage data to widget")
         self._clear_content()
 
         # Update header
@@ -808,6 +839,7 @@ class ClaudeWidget(Gtk.Window):
 
         metrics = usage.get('metrics', [])
         if not metrics:
+            log.warning("No metrics to render")
             lbl = Gtk.Label(label="No usage data found.\nRun --dump-api to inspect.")
             lbl.set_name("error-label")
             lbl.set_line_wrap(True)
@@ -830,7 +862,9 @@ class ClaudeWidget(Gtk.Window):
             self._content.pack_start(rlbl, False, False, 0)
 
         self._content.show_all()
-        self.resize(1, 1)   # Force window to shrink-wrap content
+        # Force a resize to fit content, but ensure we don't vanish
+        self.resize(1, 1)
+        log.debug(f"Widget rendered and resized. Current size: {self.get_size()}")
 
     def _add_metric_row(self, metric: dict) -> None:
         """Add one metric row (label + value text + progress bar) to content."""
