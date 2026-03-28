@@ -55,6 +55,11 @@ mkdir -p "$AUTOSTART_DIR"
 info "Syncing dependencies with uv…"
 cp "$SCRIPT_DIR/pyproject.toml" "$INSTALL_DIR/pyproject.toml"
 cd "$INSTALL_DIR"
+# python3-gi is a system package that cannot be pip-installed; the venv must
+# be created with --system-site-packages so GTK bindings are accessible.
+if [ ! -d "$INSTALL_DIR/.venv" ]; then
+    uv venv --system-site-packages --quiet "$INSTALL_DIR/.venv"
+fi
 uv sync --quiet
 
 # ── 4. Install widget script ───────────────────────────────────────────────
