@@ -1,0 +1,19 @@
+[project]
+name = "triplet-claude-widget"
+version = "0.1.0"
+description = "Claude.ai Plan Usage Desktop Widget"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "python-dateutil",
+    "curl_cffi",
+    "rich",
+]
+
+[tool.uv]
+managed = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
