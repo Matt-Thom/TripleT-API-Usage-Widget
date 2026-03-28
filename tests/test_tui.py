@@ -50,3 +50,46 @@ def test_bar_colours():
 def test_run_tui_is_importable():
     from claude_widget import run_tui
     assert callable(run_tui)
+
+
+def test_settings_dialog_method_exists():
+    from claude_widget import ClaudeWidget
+    assert hasattr(ClaudeWidget, '_show_settings_dialog')
+    assert callable(ClaudeWidget._show_settings_dialog)
+
+
+def test_settings_values_applied_to_config():
+    import claude_widget as cw
+
+    config = {
+        'session_key': 'test',
+        'position_x': 0,
+        'position_y': 0,
+        'widget_width': 230,
+        'opacity': 0.93,
+        'refresh_interval': 300,
+        'org_id': '',
+        'debug': False,
+    }
+
+    save_calls = []
+    original_save = cw.save_config
+    cw.save_config = lambda c: save_calls.append(dict(c))
+
+    try:
+        config.update({
+            'position_x': -20,
+            'position_y': 60,
+            'widget_width': 250,
+            'opacity': 0.80,
+            'refresh_interval': 120,
+        })
+        cw.save_config(config)
+
+        assert len(save_calls) == 1
+        assert save_calls[0]['position_x'] == -20
+        assert save_calls[0]['widget_width'] == 250
+        assert save_calls[0]['opacity'] == 0.80
+        assert save_calls[0]['refresh_interval'] == 120
+    finally:
+        cw.save_config = original_save
