@@ -89,6 +89,7 @@ Claude.ai authenticates via a browser session cookie named **`sessionKey`**.
 
 ```bash
 claude-widget                # Start the desktop widget — GUI (default)
+claude-widget --daemon       # Start widget detached from terminal (background)
 claude-widget --tui          # Live terminal dashboard (htop-style, no GUI needed)
 claude-widget --setup        # First-time setup / re-configure session key
 claude-widget --dump-api     # Print raw API JSON for all endpoints (debugging)
