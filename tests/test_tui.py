@@ -68,43 +68,33 @@ def test_daemonize_is_importable():
     assert 'def _daemonize' in source
 
 
-def test_daemonize_double_forks(monkeypatch):
-    """_daemonize() must fork twice, setsid, chdir('/'), and redirect I/O."""
-    import os
+def test_daemonize_spawns_detached_subprocess(monkeypatch):
+    """_daemonize() must spawn a subprocess with start_new_session=True and then exit."""
+    import subprocess
     import sys
-    import unittest.mock as mock
     import claude_widget
 
-    calls = []
-    fork_results = iter([0, 0])  # simulate child path for both forks
+    popen_calls = []
 
-    monkeypatch.setattr(os, 'fork',   lambda: next(fork_results))
-    monkeypatch.setattr(os, 'setsid', lambda: calls.append('setsid'))
-    monkeypatch.setattr(os, 'chdir',  lambda p: calls.append(f'chdir:{p}'))
-    monkeypatch.setattr(os, 'dup2',   lambda fd, fd2: calls.append(f'dup2:{fd2}'))
+    class FakePopen:
+        def __init__(self, argv, **kwargs):
+            popen_calls.append({'argv': argv, 'kwargs': kwargs})
 
-    # pytest replaces stdin with a pseudofile — give all three real-looking filenos
-    monkeypatch.setattr(sys, 'stdin',  mock.MagicMock(fileno=lambda: 0))
-    monkeypatch.setattr(sys, 'stdout', mock.MagicMock(fileno=lambda: 1))
-    monkeypatch.setattr(sys, 'stderr', mock.MagicMock(fileno=lambda: 2))
+    monkeypatch.setattr(subprocess, 'Popen', FakePopen)
 
-    opened_files = []
-    original_open = open
+    # _daemonize calls sys.exit(0) after Popen — catch it
+    with __import__('pytest').raises(SystemExit) as exc:
+        claude_widget._daemonize()
 
-    def mock_open(path, *args, **kwargs):
-        opened_files.append(str(path))
-        return original_open(os.devnull, *args, **kwargs)
-
-    monkeypatch.setattr('builtins.open', mock_open)
-
-    claude_widget._daemonize()
-
-    assert 'setsid' in calls
-    assert 'chdir:/' in calls
-    # stdin (fd 0), stdout (fd 1), stderr (fd 2) all redirected via dup2
-    assert 'dup2:0' in calls
-    assert 'dup2:1' in calls
-    assert 'dup2:2' in calls
+    assert exc.value.code == 0
+    assert len(popen_calls) == 1
+    call = popen_calls[0]
+    # Must detach from terminal
+    assert call['kwargs']['start_new_session'] is True
+    # stdin must be suppressed
+    assert call['kwargs']['stdin'] == subprocess.DEVNULL
+    # --daemon must not be forwarded to the child
+    assert '--daemon' not in call['argv']
 
 
 def test_settings_values_applied_to_config():
