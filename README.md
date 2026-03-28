@@ -1,55 +1,72 @@
-# Claude Usage Widget
+# TripleT Claude Usage Widget
 
-A compact, live desktop widget for **Linux Mint / Cinnamon** that polls Claude.ai's internal API and displays your plan usage — messages, projects, storage, and reset timer — as an always-visible overlay on your desktop background.
+Monitor your Claude.ai plan usage at a glance. Displays live message counts, project usage, storage, and your reset timer — either as an always-on desktop widget or a live terminal dashboard.
+
+Built for **Linux Mint / Cinnamon** but works on any Linux desktop with GTK3.
 
 ---
 
-## Preview
+## Modes
+
+### GUI Widget
+A frameless, always-visible overlay that sits on your desktop background. Stays below all windows, appears on every workspace, and hides from the taskbar.
 
 ```
-● ◆ Claude Pro              2m ago
-────────────────────────────────
+● ◆ Claude Pro                        2m ago
+────────────────────────────────────────────
 Messages
-[███████████░░░░░░] 45/100 /d
+████████████░░░░░░░░  45/100 /day
 Projects
-[███░░░░░░░░░░░░░░] 3/20
+███░░░░░░░░░░░░░░░░░  3/20
 Storage
-[████████░░░░░░░░░] 2.1/5GB
-────────────────────────────────
-                Resets in 4h 23m
+████████░░░░░░░░░░░░  2.1/5 GB
+────────────────────────────────────────────
+                           Resets in 4h 23m
 ```
 
-Features:
-- **Compact** — one progress bar per metric, no wasted space
-- **Colour-coded** — purple (ok) → amber (≥75%) → red (≥90%)
-- **Draggable** — left-click-drag to reposition; position auto-saved
-- **Right-click menu** — Refresh Now / Quit
-- **Auto-refresh** every 5 minutes (configurable)
-- **Autostart** at login via `.desktop` entry
+### TUI Dashboard (`--tui`)
+A live terminal dashboard in the style of `htop`. Runs in any terminal — no desktop environment required.
+
+```
+╭─ ● ◆ Claude Pro ──────────────────── 2m ago ─╮
+│ Messages                                       │
+│ ████████████░░░░░░░░  45/100 /day              │
+│ Projects                                       │
+│ ███░░░░░░░░░░░░░░░░░  3/20                     │
+│ Storage                                        │
+│ ████████░░░░░░░░░░░░  2.1/5 GB                 │
+│                           Resets in 4h 23m     │
+╰────────────────────────────────────────────────╯
+```
+
+Both modes share the same colour coding: **purple** (ok) → **amber** (≥75%) → **red** (≥90%).
 
 ---
 
 ## Installation
 
-### Recommended (System-wide)
+### Recommended (system-wide, with autostart)
+
 ```bash
-cd claude-widget
+git clone git@github.com:Matt-Thom/TripleT-API-Usage-Widget.git
+cd TripleT-API-Usage-Widget
 bash install.sh
 ```
 
 The installer:
-1.  Installs system dependencies (`python3-gi`, `python3-venv`, `python3-pip`, `gir1.2-gtk-3.0`).
-2.  Creates a secure virtual environment in `~/.local/share/claude-widget/venv`.
-3.  Enforces strict file permissions (`chmod 700` on config dir, `chmod 600` on `config.json`).
-4.  Adds an autostart entry for your desktop environment.
-5.  Runs the secure setup wizard to collect your session key.
+1. Installs system dependencies (`python3-gi`, `python3-venv`, `python3-pip`, `gir1.2-gtk-3.0`)
+2. Creates a virtual environment at `~/.local/share/claude-widget/venv` and installs Python deps
+3. Secures the config directory (`chmod 700`) and config file (`chmod 600`)
+4. Adds an autostart `.desktop` entry so the widget launches at login
+5. Runs the setup wizard to collect your session key
 
-### Local Development / Portable
-If you prefer not to install the widget system-wide, you can run it directly from the project directory:
+### Local / portable (no system changes)
+
 ```bash
 bash start_local.sh
 ```
-This script creates a local `.venv`, installs dependencies, and launches the widget without modifying your system paths or autostart entries.
+
+Creates a local `.venv`, installs dependencies, and launches the widget from the project directory. Nothing is written outside the repo.
 
 ---
 
@@ -57,67 +74,66 @@ This script creates a local `.venv`, installs dependencies, and launches the wid
 
 Claude.ai authenticates via a browser session cookie named **`sessionKey`**.
 
-1.  Open [https://claude.ai](https://claude.ai) and sign in.
-2.  Press **F12** to open DevTools.
-3.  Go to the **Application** tab → **Storage** → **Cookies** → `https://claude.ai`.
-4.  Find the row named `sessionKey` and copy the **Value** column.
+1. Open [https://claude.ai](https://claude.ai) and sign in
+2. Press **F12** → **Application** tab → **Storage** → **Cookies** → `https://claude.ai`
+3. Find the row named `sessionKey` and copy the **Value** column
 
-> **Security Note:** This key grants full access to your Claude account.
-> - The setup wizard uses a masked input (input hidden) to prevent the key from being seen or logged.
-> - The widget automatically secures `~/.config/claude-widget/config.json` with `chmod 600`.
-> - Never share this key or commit it to version control.
-
----
-
-## Configuration
-
-Edit `~/.config/claude-widget/config.json`:
-
-```json
-{
-  "session_key":      "sk-ant-...",   // Your Claude.ai sessionKey cookie
-  "org_id":           "",             // Auto-discovered on first run; or set manually
-  "refresh_interval": 300,            // Seconds between background refreshes
-  "position_x":       -15,            // Negative = offset from right edge of screen
-  "position_y":       50,             // Pixels from top of screen
-  "widget_width":     230,            // Fixed pixel width
-  "opacity":          0.93,           // 0.0–1.0
-  "debug":            false           // Verbose logging to widget.log
-}
-```
-
-| Key | Default | Notes |
-|-----|---------|-------|
-| `position_x` | `-15` | Negative values offset from the **right** edge. `0` = far left. |
-| `position_y` | `50` | Pixels from the top of the primary monitor. |
-| `refresh_interval` | `300` | Minimum recommended: 60 (avoid rate-limiting). |
-
-After editing config, restart the widget:
-```bash
-pkill -f claude_widget.py && claude-widget &
-```
+> **Security note:** This key grants full access to your Claude account.
+> - The setup wizard masks input so the key is never echoed to the terminal or logged
+> - Config is automatically secured with `chmod 600`
+> - Never share this key or commit it to version control
 
 ---
 
 ## Usage
 
 ```bash
-claude-widget                # Start the widget — GUI (default)
+claude-widget                # Start the desktop widget — GUI (default)
 claude-widget --tui          # Live terminal dashboard (htop-style, no GUI needed)
-claude-widget --dump-api     # Print raw API JSON from all endpoints (debugging)
-claude-widget --setup        # Re-run setup wizard
-claude-widget --debug        # Verbose logging to stdout + widget.log
+claude-widget --setup        # First-time setup / re-configure session key
+claude-widget --dump-api     # Print raw API JSON for all endpoints (debugging)
+claude-widget --debug        # Verbose logging to stdout and widget.log
+claude-widget --no-curl      # Disable curl_cffi, fall back to standard requests
 ```
 
-### Debugging field names
+**TUI controls:** Press `Ctrl-C` to exit. Refreshes automatically on the configured interval.
 
-Claude.ai's internal API is undocumented. If the widget shows "No usage data found", run:
+**GUI controls:** Left-click-drag to reposition (position is saved). Right-click for Refresh / Quit.
 
+---
+
+## Configuration
+
+Config is stored at `~/.config/claude-widget/config.json` and created automatically by `--setup`.
+
+```json
+{
+  "session_key":      "sk-ant-...",
+  "org_id":           "",
+  "refresh_interval": 300,
+  "position_x":       -15,
+  "position_y":       50,
+  "widget_width":     230,
+  "opacity":          0.93,
+  "debug":            false
+}
+```
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `session_key` | — | Your Claude.ai `sessionKey` cookie. Required. |
+| `org_id` | `""` | Auto-discovered on first run. Can be set manually. |
+| `refresh_interval` | `300` | Seconds between refreshes. Minimum: 60. |
+| `position_x` | `-15` | Negative = offset from the right edge of the screen. |
+| `position_y` | `50` | Pixels from the top of the screen. |
+| `widget_width` | `230` | Fixed width in pixels (GUI only). |
+| `opacity` | `0.93` | Window opacity 0.0–1.0 (GUI only). |
+| `debug` | `false` | Verbose logging to `widget.log`. |
+
+After editing config, restart:
 ```bash
-claude-widget --dump-api
+pkill -f claude_widget.py && claude-widget &
 ```
-
-This prints the raw JSON from every candidate endpoint. Look for fields that contain your usage numbers, then update the `_normalise()` method in `claude_widget.py` to map them correctly.
 
 ---
 
@@ -125,14 +141,17 @@ This prints the raw JSON from every candidate endpoint. Look for fields that con
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| "No session key" error | Config not set up | Run `claude-widget --setup` |
-| "401 Unauthorised" | Session key expired | Get a fresh sessionKey from browser |
-| "Cannot discover org ID" | Session key invalid or network blocked | Check key; try `--dump-api` |
-| "No usage data found" | API field names changed | Run `--dump-api`, update `_normalise()` |
-| Widget appears behind desktop icons | Compositor issue | Try toggling `set_keep_below` in code |
+| "No session key" | Config not set up | Run `claude-widget --setup` |
+| "401 Unauthorised" | Session key expired | Get a fresh `sessionKey` from your browser |
+| "Cannot discover org ID" | Invalid key or network issue | Check the key; try `--dump-api` |
+| "No usage data found" | API field names changed | Run `--dump-api`, update `_normalise()` in `claude_widget.py` |
+| Widget behind desktop icons | Compositor issue | Toggle `set_keep_below` in the source |
 | Widget not starting at login | Autostart entry missing | Re-run `install.sh` |
+| Cloudflare 403 error | Bot detection | Install `curl_cffi` (`pip install curl_cffi`) or refresh your browser session |
 
 Logs: `~/.config/claude-widget/widget.log`
+
+**If the API fields change:** Claude.ai's internal API is undocumented and may change between deployments. Run `--dump-api` to print the raw JSON from every candidate endpoint, then update the field mappings in `_normalise()`.
 
 ---
 
@@ -140,29 +159,32 @@ Logs: `~/.config/claude-widget/widget.log`
 
 | Path | Purpose |
 |------|---------|
-| `~/.local/share/claude-widget/claude_widget.py` | Widget script |
-| `~/.config/claude-widget/config.json` | User config |
+| `~/.local/share/claude-widget/claude_widget.py` | Installed widget script |
+| `~/.config/claude-widget/config.json` | User config (chmod 600) |
 | `~/.config/claude-widget/widget.log` | Runtime log |
-| `~/.config/autostart/claude-widget.desktop` | Autostart entry |
+| `~/.config/autostart/claude-widget.desktop` | Login autostart entry |
 | `~/.local/bin/claude-widget` | CLI launcher |
-
----
-
-## Notes
-
-- **API stability:** Claude.ai's internal API is not officially documented and may change. The widget tries multiple endpoint patterns and includes a `--dump-api` diagnostic to recover from changes.
-- **Rate limiting:** The default 5-minute refresh interval is conservative. Reduce with care.
-- **Session expiry:** The `sessionKey` cookie has a long TTL but will eventually expire. The widget will show a 401 error when it does — just update the config with a fresh key.
-- **Multi-monitor:** The widget positions relative to the default Gdk screen. For multi-monitor setups, adjust `position_x`/`position_y` manually in config.
 
 ---
 
 ## Dependencies
 
-- `python3-gi` — PyGObject (GTK3 bindings) — GUI mode only
-- `python3-requests` — HTTP client
-- `python3-dateutil` — ISO timestamp parsing (optional but recommended)
-- `gir1.2-gtk-3.0` — GTK3 typelib — GUI mode only
-- `rich` — Terminal rendering for `--tui` mode
+| Package | Purpose | Required for |
+|---------|---------|-------------|
+| `python3-gi` | PyGObject — GTK3 bindings | GUI mode |
+| `gir1.2-gtk-3.0` | GTK3 typelib | GUI mode |
+| `requests` | HTTP client | Both modes |
+| `python-dateutil` | ISO timestamp parsing | Both modes (optional) |
+| `curl_cffi` | Cloudflare-bypass HTTP | Both modes (optional but recommended) |
+| `rich` | Terminal rendering | TUI mode |
 
-All available via `apt` on Linux Mint 22.x (`python3-gi`, system deps); `rich` installed via pip/uv.
+System packages (`python3-gi`, `gir1.2-gtk-3.0`) are installed by `install.sh` via `apt`. Python packages are managed via `uv` / pip inside the virtual environment.
+
+---
+
+## Notes
+
+- **API stability:** Claude.ai's internal API is undocumented and may change without notice. The widget tries multiple endpoint patterns automatically and `--dump-api` helps recover when they do.
+- **Rate limiting:** The default 5-minute refresh is conservative. Lower values risk rate-limiting from Claude.ai.
+- **Session expiry:** The `sessionKey` cookie has a long TTL but will eventually expire. Re-run `--setup` when you see a 401 error.
+- **Multi-monitor (GUI):** The widget positions relative to the total virtual desktop width. Adjust `position_x` / `position_y` in config for non-standard setups.
