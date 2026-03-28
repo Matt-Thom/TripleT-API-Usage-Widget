@@ -98,7 +98,15 @@ claude-widget --no-curl      # Disable curl_cffi, fall back to standard requests
 
 **TUI controls:** Press `Ctrl-C` to exit. Refreshes automatically on the configured interval.
 
-**GUI controls:** Left-click-drag to reposition (position is saved). Right-click for Refresh / Quit.
+**GUI controls:** Left-click-drag to reposition (position is saved). Right-click for Refresh / Settings / Quit.
+
+Right-click → **Settings** opens a dialog to adjust:
+- Position (X / Y) — negative X values offset from the right edge of the screen
+- Widget width
+- Opacity (0.1–1.0)
+- Refresh interval (minimum 60 seconds)
+
+Changes apply immediately without restarting the widget.
 
 ---
 
