@@ -977,11 +977,14 @@ class ClaudeWidget(Gtk.Window):
             self.move(max(0, new_x), max(0, new_y))
 
     def _show_context_menu(self, event: Gdk.EventButton) -> None:
-        """Right-click context menu with Refresh and Quit options."""
+        """Right-click context menu with Refresh, Settings and Quit options."""
         menu = Gtk.Menu()
 
         item_refresh = Gtk.MenuItem(label="↻  Refresh Now")
         item_refresh.connect('activate', self._on_menu_refresh)
+
+        item_settings = Gtk.MenuItem(label="⚙  Settings")
+        item_settings.connect('activate', self._show_settings_dialog)
 
         item_sep = Gtk.SeparatorMenuItem()
 
@@ -989,6 +992,7 @@ class ClaudeWidget(Gtk.Window):
         item_quit.connect('activate', lambda _: Gtk.main_quit())
 
         menu.append(item_refresh)
+        menu.append(item_settings)
         menu.append(item_sep)
         menu.append(item_quit)
         menu.show_all()
