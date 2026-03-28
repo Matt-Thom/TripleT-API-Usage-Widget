@@ -1366,6 +1366,7 @@ def main() -> None:
         epilog="""
 Examples:
   python3 claude_widget.py              Run the widget (default)
+  python3 claude_widget.py --daemon     Run widget detached from terminal (background)
   python3 claude_widget.py --tui        Live terminal dashboard (htop-style)
   python3 claude_widget.py --setup      First-time configuration wizard
   python3 claude_widget.py --dump-api   Print raw API JSON (identify field names)
@@ -1373,12 +1374,19 @@ Examples:
   python3 claude_widget.py --no-curl    Disable curl_cffi (use standard requests)
         """
     )
-    parser.add_argument('--setup',    action='store_true', help="Run interactive setup wizard")
-    parser.add_argument('--dump-api', action='store_true', help="Print raw API JSON and exit")
-    parser.add_argument('--debug',    action='store_true', help="Enable verbose debug logging")
-    parser.add_argument('--no-curl',  action='store_true', help="Disable curl_cffi and use requests")
-    parser.add_argument('--tui',      action='store_true', help="Run live TUI dashboard in terminal (no GUI)")
+    parser.add_argument('--setup',   action='store_true', help="Run interactive setup wizard")
+    parser.add_argument('--debug',   action='store_true', help="Enable verbose debug logging")
+    parser.add_argument('--no-curl', action='store_true', help="Disable curl_cffi and use requests")
+
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument('--daemon',   action='store_true', help="Detach from terminal and run widget in background")
+    mode_group.add_argument('--tui',      action='store_true', help="Run live TUI dashboard in terminal (no GUI)")
+    mode_group.add_argument('--dump-api', action='store_true', help="Print raw API JSON and exit")
+
     args = parser.parse_args()
+
+    if args.daemon:
+        _daemonize()
 
     if args.debug:
         log.setLevel(logging.DEBUG)
