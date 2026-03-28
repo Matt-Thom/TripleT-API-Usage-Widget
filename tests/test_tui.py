@@ -53,9 +53,12 @@ def test_run_tui_is_importable():
 
 
 def test_settings_dialog_method_exists():
-    from claude_widget import ClaudeWidget
-    assert hasattr(ClaudeWidget, '_show_settings_dialog')
-    assert callable(ClaudeWidget._show_settings_dialog)
+    import inspect
+    import claude_widget
+    # ClaudeWidget inherits from mocked Gtk.Window in tests so the class itself
+    # resolves to a MagicMock. Check the module source directly instead.
+    source = inspect.getsource(claude_widget)
+    assert 'def _show_settings_dialog' in source
 
 
 def test_settings_values_applied_to_config():

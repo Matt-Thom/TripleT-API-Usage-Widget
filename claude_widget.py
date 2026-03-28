@@ -1000,6 +1000,84 @@ class ClaudeWidget(Gtk.Window):
         if self.api:
             threading.Thread(target=self._bg_fetch, daemon=True, name="manual-refresh").start()
 
+    def _show_settings_dialog(self, _=None) -> None:
+        """Show a modal settings dialog for position, size, opacity and refresh."""
+        dialog = Gtk.Dialog(
+            title="Widget Settings",
+            transient_for=self,
+            modal=True,
+            destroy_with_parent=True,
+        )
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("OK",     Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.set_resizable(False)
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(12)
+        grid.set_row_spacing(8)
+        grid.set_margin_top(12)
+        grid.set_margin_bottom(12)
+        grid.set_margin_start(16)
+        grid.set_margin_end(16)
+
+        def _label(text):
+            lbl = Gtk.Label(label=text)
+            lbl.set_halign(Gtk.Align.START)
+            return lbl
+
+        def _spin(value, lo, hi, step=1):
+            adj = Gtk.Adjustment(value=value, lower=lo, upper=hi,
+                                 step_increment=step, page_increment=10)
+            sb  = Gtk.SpinButton(adjustment=adj, climb_rate=1, digits=0)
+            sb.set_numeric(True)
+            return sb
+
+        spin_x = _spin(self.config.get('position_x', -15), -99999, 99999)
+        spin_y = _spin(self.config.get('position_y', 50), 0, 99999)
+        spin_w = _spin(self.config.get('widget_width', 230), 100, 9999)
+
+        adj_op   = Gtk.Adjustment(value=self.config.get('opacity', 0.93),
+                                  lower=0.1, upper=1.0,
+                                  step_increment=0.01, page_increment=0.1)
+        scale_op = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=adj_op)
+        scale_op.set_digits(2)
+        scale_op.set_hexpand(True)
+        scale_op.set_size_request(160, -1)
+
+        spin_r = _spin(self.config.get('refresh_interval', 300), 60, 86400)
+
+        rows = [
+            (_label("Position X"),    spin_x,   _label("px  (negative = offset from right edge)")),
+            (_label("Position Y"),    spin_y,   _label("px")),
+            (_label("Widget width"),  spin_w,   _label("px")),
+            (_label("Opacity"),       scale_op, None),
+            (_label("Refresh every"), spin_r,   _label("seconds  (min 60)")),
+        ]
+        for row_idx, (lbl, widget, suffix) in enumerate(rows):
+            grid.attach(lbl,    0, row_idx, 1, 1)
+            grid.attach(widget, 1, row_idx, 1, 1)
+            if suffix:
+                grid.attach(suffix, 2, row_idx, 1, 1)
+
+        dialog.get_content_area().add(grid)
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            self.config['position_x']       = spin_x.get_value_as_int()
+            self.config['position_y']       = spin_y.get_value_as_int()
+            self.config['widget_width']     = spin_w.get_value_as_int()
+            self.config['opacity']          = round(scale_op.get_value(), 2)
+            self.config['refresh_interval'] = max(60, spin_r.get_value_as_int())
+
+            save_config(self.config)
+            self._position_window()
+            self.set_size_request(self.config['widget_width'], -1)
+            Gtk.Widget.set_opacity(self, self.config['opacity'])
+
+        dialog.destroy()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  TUI helpers  (--tui)
