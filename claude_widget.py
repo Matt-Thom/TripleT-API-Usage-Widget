@@ -23,6 +23,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk, Gdk, GLib, Pango
+import cairo
 
 import requests
 import json
@@ -711,7 +712,7 @@ class ClaudeWidget(Gtk.Window):
         else:
             cr.set_source_rgb(12/255, 11/255, 18/255)
             
-        cr.set_operator(Gdk.CairoOperator.SOURCE)
+        cr.set_operator(cairo.Operator.SOURCE)
         cr.paint()
         return False
 
@@ -809,7 +810,7 @@ class ClaudeWidget(Gtk.Window):
 
     def _show_error(self, msg: str) -> None:
         """Display an error message in the content area (called from main thread)."""
-        log.error(f"Showing error in widget: {msg.replace('\n', ' ')}")
+        log.error("Showing error in widget: %s", msg.replace('\n', ' '))
         self._clear_content()
         self._dot.get_style_context().add_class('error')
         self._dot.get_style_context().remove_class('ok')
