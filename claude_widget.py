@@ -634,6 +634,7 @@ class ClaudeWidget(Gtk.Window):
         self.last_ok  = None          # datetime of last successful fetch
         self._drag_x  = 0             # For window drag tracking
         self._drag_y  = 0
+        self._refresh_timer_id = None # ID for GLib timer
 
         self._apply_css()
         self._build_ui()
@@ -649,15 +650,22 @@ class ClaudeWidget(Gtk.Window):
         GLib.idle_add(lambda: (self._init_api_and_fetch(), False)[1])
 
         # Periodic refresh timer
-        interval = max(60, self.config.get('refresh_interval', 300))
-        log.debug(f"Setting refresh timer to {interval}s")
-        GLib.timeout_add_seconds(interval, self._on_timer)
+        self._start_refresh_timer()
         
         # Update "X min ago" label every 60s
         GLib.timeout_add_seconds(60, self._update_age_label)
         
         # Heartbeat to confirm main loop is running
         GLib.timeout_add_seconds(5, self._heartbeat)
+
+    def _start_refresh_timer(self) -> None:
+        """Start or restart the periodic refresh timer."""
+        if self._refresh_timer_id:
+            GLib.source_remove(self._refresh_timer_id)
+        
+        interval = max(60, self.config.get('refresh_interval', 300))
+        log.debug(f"Starting refresh timer: {interval}s")
+        self._refresh_timer_id = GLib.timeout_add_seconds(interval, self._on_timer)
 
     def _heartbeat(self) -> bool:
         log.debug("GTK Main Loop heartbeat (still alive)")
@@ -729,8 +737,11 @@ class ClaudeWidget(Gtk.Window):
         visual = self.get_visual()
         is_rgba = visual and visual.get_depth() == 32
         
+        # Use opacity from config (default to 0.65) for the background alpha
+        alpha = self.config.get('opacity', 0.65)
+        
         if is_rgba:
-            cr.set_source_rgba(12/255, 11/255, 18/255, 0.65)
+            cr.set_source_rgba(12/255, 11/255, 18/255, alpha)
         else:
             cr.set_source_rgb(12/255, 11/255, 18/255)
             
@@ -1152,12 +1163,24 @@ class ClaudeWidget(Gtk.Window):
             self.config['position_y']       = spin_y.get_value_as_int()
             self.config['widget_width']     = spin_w.get_value_as_int()
             self.config['opacity']          = round(scale_op.get_value(), 2)
-            self.config['refresh_interval'] = max(60, spin_r.get_value_as_int())
+            
+            old_refresh = self.config.get('refresh_interval', 300)
+            new_refresh = max(60, spin_r.get_value_as_int())
+            self.config['refresh_interval'] = new_refresh
 
+            # Persist to disk
             save_config(self.config)
+
+            # Apply UI changes
             self._position_window()
             self.set_size_request(self.config['widget_width'], -1)
-            Gtk.Widget.set_opacity(self, self.config['opacity'])
+            
+            # Restart timer if refresh interval changed
+            if new_refresh != old_refresh:
+                self._start_refresh_timer()
+            
+            # Redraw window to update background transparency
+            self.queue_draw()
 
         dialog.destroy()
 
