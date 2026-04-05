@@ -350,18 +350,20 @@ class ClaudeAPIClient:
                     "used":   round(data['utilization'], 1),
                     "limit":  100,
                     "unit":   "%",
-                    "period": ""
+                    "period": "",
+                    "reset_at": data.get('resets_at') or data.get('reset_at')
                 })
 
         # Extra Usage / Credits (Claude for Teams / Pro Extras)
         extra = raw.get('extra_usage')
         if isinstance(extra, dict) and extra.get('is_enabled'):
             metrics.append({
-                "label":  "Extra Credits",
+                "label":  "Extra Usage",
                 "used":   round(extra.get('used_credits', 0), 0),
                 "limit":  round(extra.get('monthly_limit', 0), 0),
                 "unit":   "",
-                "period": "mo"
+                "period": "mo",
+                "reset_at": extra.get('resets_at') or extra.get('reset_at')
             })
 
         # ── Classic Format: Messages / conversations ──────────────────────────
@@ -381,6 +383,7 @@ class ClaudeAPIClient:
                     "limit":  raw.get(limit_k, 0),
                     "unit":   "",
                     "period": period,
+                    "reset_at": raw.get('reset_at') or raw.get('resets_at')
                 })
                 break  # Only one messages row
 
@@ -451,7 +454,14 @@ class ClaudeAPIClient:
                     if stem in lk:
                         lv = lval
                         break
-                metrics.append({"label": label, "used": uv, "limit": lv, "unit": "", "period": ""})
+                metrics.append({
+                    "label":    label,
+                    "used":     uv,
+                    "limit":    lv,
+                    "unit":     "",
+                    "period":   "",
+                    "reset_at": raw.get('reset_at') or raw.get('resets_at')
+                })
 
         # ── Plan name ─────────────────────────────────────────────────────────
         plan = (raw.get('plan_name')
@@ -535,6 +545,14 @@ window {
     color: rgba(255, 255, 255, 0.38);
     font-size: 9px;
     font-family: monospace;
+}
+
+#metric-reset {
+    color: rgba(255, 255, 255, 0.22);
+    font-size: 8.5px;
+    font-family: monospace;
+    margin-top: 1px;
+    margin-bottom: 3px;
 }
 
 /* ── Progress bars ───────────────────────────────────────────────────────── */
@@ -849,8 +867,10 @@ class ClaudeWidget(Gtk.Window):
                 self._add_metric_row(metric)
 
         # ── Reset timer ───────────────────────────────────────────────────────
-        reset_str = self._format_reset(usage.get('reset_at'))
-        if reset_str:
+        shown_resets = {self._format_reset(m.get('reset_at')) for m in metrics if m.get('reset_at')}
+        reset_str    = self._format_reset(usage.get('reset_at'))
+        
+        if reset_str and reset_str not in shown_resets:
             # Divider
             div = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             div.set_name("divider")
@@ -903,6 +923,16 @@ class ClaudeWidget(Gtk.Window):
         row.pack_start(name_lbl, True,  True,  0)
         row.pack_end  (val_lbl,  False, False, 0)
         self._content.pack_start(row, False, False, 0)
+
+        # ── Reset label (if available) ────────────────────────────────────────
+        reset_at = metric.get('reset_at')
+        if reset_at:
+            reset_str = self._format_reset(reset_at)
+            if reset_str:
+                res_lbl = Gtk.Label(label=reset_str)
+                res_lbl.set_name("metric-reset")
+                res_lbl.set_halign(Gtk.Align.START)
+                self._content.pack_start(res_lbl, False, False, 0)
 
         # ── Progress bar ──────────────────────────────────────────────────────
         bar = Gtk.ProgressBar()
@@ -1145,12 +1175,22 @@ def _format_reset(reset_at: str | None) -> str:
 
         if secs <= 0:
             return "Resetting…"
+        
         h, rem = divmod(int(secs), 3600)
         m      = rem // 60
-        if h > 23:
-            d = h // 24
-            return f"Resets in {d}d {h % 24}h"
-        return f"Resets in {h}h {m:02d}m"
+        
+        # 1. Under 24h: "Resets in 3h 19m"
+        if h < 24:
+            if h == 0:
+                return f"Resets in {m}m"
+            return f"Resets in {h}h {m}m"
+
+        # 2. Under 7 days: "Resets Thu 1:30 PM"
+        if h < 24 * 7:
+            return f"Resets {dt.strftime('%a %-I:%M %p')}"
+
+        # 3. Further out: "Resets May 1"
+        return f"Resets {dt.strftime('%b %-d')}"
     except Exception as e:
         log.debug(f"Could not parse reset_at '{reset_at}': {e}")
         return ""
@@ -1230,9 +1270,20 @@ def _build_tui_renderable(usage, last_ok, error_msg):
         bar_line.append(f"  {val_str}", style="dim white")
         lines.append(bar_line)
 
+        # Per-metric reset
+        reset_at = metric.get('reset_at')
+        if reset_at:
+            reset_str = _format_reset(reset_at)
+            if reset_str:
+                res_line = Text()
+                res_line.append(f"  {reset_str}", style="dim white italic")
+                lines.append(res_line)
+
     # Reset countdown footer
-    reset_str = _format_reset(usage.get('reset_at'))
-    if reset_str:
+    shown_resets = {_format_reset(m.get('reset_at')) for m in usage.get('metrics', []) if m.get('reset_at')}
+    reset_str    = _format_reset(usage.get('reset_at'))
+
+    if reset_str and reset_str not in shown_resets:
         lines.append(Text(""))
         footer = Text(justify="right")
         footer.append(reset_str, style="dim white")
