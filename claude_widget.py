@@ -23,6 +23,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk, Gdk, GLib, Pango
+import cairo
 
 import requests
 import json
@@ -491,12 +492,13 @@ class ClaudeAPIClient:
 
 # CSS for the widget — dark, compact, purple-accented
 WIDGET_CSS = """
-/* ── Window shell ─────────────────────────────────────────────────────────── */
+/* ── Window shell ────────────────────────────────────────────────────────── */
 window {
-    background-color: rgba(12, 11, 18, 0.95);
+    background-color: rgba(12, 11, 18, 0.65);
     border-radius: 10px;
     border: 1px solid rgba(147, 97, 255, 0.25);
 }
+
 
 /* ── Header bar ──────────────────────────────────────────────────────────── */
 #header {
@@ -505,7 +507,7 @@ window {
 }
 
 #plan-label {
-    color: #b07fff;
+    color: #c499ff;
     font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.4px;
@@ -513,17 +515,17 @@ window {
 }
 
 #status-dot {
-    color: #22c55e;
+    color: #4ade80;
     font-size: 8px;
     margin-right: 1px;
 }
 
 #status-dot.error {
-    color: #ef4444;
+    color: #f87171;
 }
 
 #refresh-label {
-    color: rgba(255, 255, 255, 0.28);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 9px;
     font-family: monospace;
 }
@@ -535,21 +537,22 @@ window {
 
 /* ── Individual metric rows ─────────────────────────────────────────────── */
 #metric-name {
-    color: rgba(255, 255, 255, 0.62);
+    color: rgba(255, 255, 255, 0.98);
     font-size: 10.5px;
+    font-weight: 600;
     font-family: "JetBrains Mono", "Fira Mono", monospace;
     margin-top: 5px;
 }
 
 #metric-value {
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 9px;
     font-family: monospace;
 }
 
 #metric-reset {
-    color: rgba(255, 255, 255, 0.22);
-    font-size: 8.5px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 10px;
     font-family: monospace;
     margin-top: 1px;
     margin-bottom: 3px;
@@ -584,8 +587,8 @@ progressbar.crit progress {
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 #reset-label {
-    color: rgba(255, 255, 255, 0.22);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 11px;
     font-family: monospace;
     margin-top: 7px;
 }
@@ -605,7 +608,7 @@ progressbar.crit progress {
 }
 
 #loading-label {
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.6);
     font-size: 10px;
     font-family: monospace;
     padding: 4px 0;
@@ -690,6 +693,7 @@ class ClaudeWidget(Gtk.Window):
         self.set_skip_taskbar_hint(True)    # Hidden from taskbar
         self.set_skip_pager_hint(True)      # Hidden from pager / alt-tab
         self.stick()                        # All workspaces
+        self.set_keep_above(True)           # Always on top
 
         # Composite / RGBA for rounded corners + transparency
         screen = self.get_screen()
@@ -700,8 +704,9 @@ class ClaudeWidget(Gtk.Window):
             log.warning("RGBA visual not available — transparency will be disabled.")
 
         self.set_app_paintable(True)
-        # Use GtkWidget.set_opacity instead of GtkWindow.set_opacity
-        Gtk.Widget.set_opacity(self, self.config.get('opacity', 0.93))
+        # Keep global opacity at 1.0 for bright text, 
+        # transparency is handled by _on_draw background painting.
+        Gtk.Widget.set_opacity(self, 1.0)
 
         # Input events for drag + right-click menu
         self.add_events(
@@ -725,11 +730,11 @@ class ClaudeWidget(Gtk.Window):
         is_rgba = visual and visual.get_depth() == 32
         
         if is_rgba:
-            cr.set_source_rgba(12/255, 11/255, 18/255, 0.95)
+            cr.set_source_rgba(12/255, 11/255, 18/255, 0.65)
         else:
             cr.set_source_rgb(12/255, 11/255, 18/255)
             
-        cr.set_operator(Gdk.CairoOperator.SOURCE)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
         cr.paint()
         return False
 
@@ -905,12 +910,15 @@ class ClaudeWidget(Gtk.Window):
         # Format value string
         if limit and limit > 0:
             # Compact: "45/100" or "2.1/5 GB"
-            if unit:
+            if unit == "%":
+                val_str = f"{used}%"
+            elif unit:
                 val_str = f"{used}{unit}/{limit}{unit}"
             else:
                 val_str = f"{used}/{limit}"
+            
             if period:
-                val_str += f" /{period[:1]}"   # "/d" for day
+                val_str += f"/{period[:1]}"   # "/m" for mo
         elif used:
             val_str = f"{used}{unit}"
         else:
@@ -1249,9 +1257,15 @@ def _build_tui_renderable(usage, last_ok, error_msg):
 
         # Value string (matches GTK widget format)
         if limit and limit > 0:
-            val_str  = f"{used}{unit}/{limit}{unit}" if unit else f"{used}/{limit}"
+            if unit == "%":
+                val_str = f"{used}%"
+            elif unit:
+                val_str = f"{used}{unit}/{limit}{unit}"
+            else:
+                val_str = f"{used}/{limit}"
+            
             if period:
-                val_str += f" /{period[:1]}"
+                val_str += f"/{period[:1]}"
             fraction = min(float(used) / float(limit), 1.0)
         else:
             val_str  = f"{used}{unit}" if used else "—"
@@ -1259,7 +1273,7 @@ def _build_tui_renderable(usage, last_ok, error_msg):
 
         # Label line
         name_line = Text()
-        name_line.append(label, style="dim white")
+        name_line.append(label, style="white")
         lines.append(name_line)
 
         # Progress bar + value line
@@ -1267,7 +1281,7 @@ def _build_tui_renderable(usage, last_ok, error_msg):
         bar_text = "█" * filled + "░" * (20 - filled)
         bar_line = Text()
         bar_line.append(bar_text, style=f"bold {_bar_style(fraction)}")
-        bar_line.append(f"  {val_str}", style="dim white")
+        bar_line.append(f"  {val_str}", style="white")
         lines.append(bar_line)
 
         # Per-metric reset
@@ -1276,7 +1290,7 @@ def _build_tui_renderable(usage, last_ok, error_msg):
             reset_str = _format_reset(reset_at)
             if reset_str:
                 res_line = Text()
-                res_line.append(f"  {reset_str}", style="dim white italic")
+                res_line.append(f"  {reset_str}", style="white italic")
                 lines.append(res_line)
 
     # Reset countdown footer
@@ -1286,7 +1300,7 @@ def _build_tui_renderable(usage, last_ok, error_msg):
     if reset_str and reset_str not in shown_resets:
         lines.append(Text(""))
         footer = Text(justify="right")
-        footer.append(reset_str, style="dim white")
+        footer.append(reset_str, style="white")
         lines.append(footer)
 
     title = Text()
