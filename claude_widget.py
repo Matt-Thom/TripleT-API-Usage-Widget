@@ -71,6 +71,7 @@ DEFAULT_CONFIG: dict = {
     "position_x":       -15,    # Pixels from right edge (negative) or absolute
     "position_y":       50,     # Pixels from top of screen
     "widget_width":     230,    # Fixed pixel width
+    "widget_height":    -1,     # Fixed pixel height (-1 for auto)
     "opacity":          0.93,   # 0.0 = transparent, 1.0 = opaque
     "debug":            False,
 }
@@ -532,7 +533,7 @@ window {
 
 /* ── Content area ────────────────────────────────────────────────────────── */
 #content {
-    padding: 6px 11px 9px 11px;
+    padding: 6px 11px 7px 11px;
 }
 
 /* ── Individual metric rows ─────────────────────────────────────────────── */
@@ -560,7 +561,7 @@ window {
 
 /* ── Progress bars ───────────────────────────────────────────────────────── */
 progressbar {
-    margin: 2px 0 0 0;
+    margin: 4px 0 6px 0;
 }
 
 progressbar trough {
@@ -728,8 +729,11 @@ class ClaudeWidget(Gtk.Window):
         self.connect('destroy', Gtk.main_quit)
         self.connect('draw', self._on_draw)
 
-        # Fixed width; height is dynamic
-        self.set_size_request(self.config.get('widget_width', 230), -1)
+        # Fixed width; height is dynamic unless specified
+        self.set_size_request(
+            self.config.get('widget_width', 230),
+            self.config.get('widget_height', -1)
+        )
 
     def _on_draw(self, _widget, cr) -> bool:
         """Paint the window background so the RGBA visual renders visibly."""
@@ -1468,6 +1472,13 @@ def run_setup() -> None:
             config['position_y'] = int(input("  Y position (px from top):  "))
         except ValueError:
             print("  Invalid input; using default position.")
+
+    height_ans = input("Set a fixed widget height? (Enter px, or leave blank for auto): ").strip()
+    if height_ans:
+        try:
+            config['widget_height'] = int(height_ans)
+        except ValueError:
+            print("  Invalid input; using auto-height.")
 
     save_config(config)
     print(f"\n✓ Config saved to {CONFIG_FILE}")
