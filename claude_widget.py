@@ -1059,8 +1059,34 @@ class ClaudeWidget(Gtk.Window):
         """On drag end, persist new window position to config."""
         if event.button == 1:
             px, py = self.get_position()
-            self.config['position_x'] = px
-            self.config['position_y'] = py
+            
+            # Handle relative positioning logic from _position_window in reverse
+            display = Gdk.Display.get_default()
+            primary_monitor = display.get_primary_monitor() if display else None
+            if not primary_monitor and display:
+                primary_monitor = display.get_monitor(0)
+            
+            if primary_monitor:
+                geom = primary_monitor.get_geometry()
+                w    = self.config.get('widget_width', 230)
+                
+                # Check if current position is closer to right edge of THIS monitor
+                # than to the left edge of the virtual desktop (0,0).
+                # If the user previously used a negative X, they likely prefer it.
+                if self.config.get('position_x', 0) <= 0:
+                    # Calculate negative offset from right edge
+                    # final_x = geom.x + geom.width + px_config - w
+                    # px_config = final_x - (geom.x + geom.width) + w
+                    self.config['position_x'] = px - (geom.x + geom.width) + w
+                else:
+                    self.config['position_x'] = px - geom.x
+                
+                self.config['position_y'] = py - geom.y
+            else:
+                self.config['position_x'] = px
+                self.config['position_y'] = py
+
+            log.debug(f"Widget dragged to {px}, {py}. Saving config as {self.config['position_x']}, {self.config['position_y']}")
             save_config(self.config)
 
     def _on_motion(self, widget, event: Gdk.EventMotion) -> None:
