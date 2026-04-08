@@ -71,6 +71,7 @@ DEFAULT_CONFIG: dict = {
     "position_x":       -15,    # Pixels from right edge (negative) or absolute
     "position_y":       50,     # Pixels from top of screen
     "widget_width":     230,    # Fixed pixel width
+    "widget_height":    -1,     # Fixed pixel height (-1 for auto)
     "opacity":          0.93,   # 0.0 = transparent, 1.0 = opaque
     "debug":            False,
 }
@@ -351,18 +352,20 @@ class ClaudeAPIClient:
                     "used":   round(data['utilization'], 1),
                     "limit":  100,
                     "unit":   "%",
-                    "period": ""
+                    "period": "",
+                    "reset_at": data.get('resets_at') or data.get('reset_at')
                 })
 
         # Extra Usage / Credits (Claude for Teams / Pro Extras)
         extra = raw.get('extra_usage')
         if isinstance(extra, dict) and extra.get('is_enabled'):
             metrics.append({
-                "label":  "Extra Credits",
+                "label":  "Extra Usage",
                 "used":   round(extra.get('used_credits', 0), 0),
                 "limit":  round(extra.get('monthly_limit', 0), 0),
                 "unit":   "",
-                "period": "mo"
+                "period": "mo",
+                "reset_at": extra.get('resets_at') or extra.get('reset_at')
             })
 
         # ── Classic Format: Messages / conversations ──────────────────────────
@@ -382,6 +385,7 @@ class ClaudeAPIClient:
                     "limit":  raw.get(limit_k, 0),
                     "unit":   "",
                     "period": period,
+                    "reset_at": raw.get('reset_at') or raw.get('resets_at')
                 })
                 break  # Only one messages row
 
@@ -452,7 +456,14 @@ class ClaudeAPIClient:
                     if stem in lk:
                         lv = lval
                         break
-                metrics.append({"label": label, "used": uv, "limit": lv, "unit": "", "period": ""})
+                metrics.append({
+                    "label":    label,
+                    "used":     uv,
+                    "limit":    lv,
+                    "unit":     "",
+                    "period":   "",
+                    "reset_at": raw.get('reset_at') or raw.get('resets_at')
+                })
 
         # ── Plan name ─────────────────────────────────────────────────────────
         plan = (raw.get('plan_name')
@@ -482,12 +493,13 @@ class ClaudeAPIClient:
 
 # CSS for the widget — dark, compact, purple-accented
 WIDGET_CSS = """
-/* ── Window shell ─────────────────────────────────────────────────────────── */
+/* ── Window shell ────────────────────────────────────────────────────────── */
 window {
-    background-color: rgba(12, 11, 18, 0.95);
+    background-color: rgba(12, 11, 18, 0.65);
     border-radius: 10px;
     border: 1px solid rgba(147, 97, 255, 0.25);
 }
+
 
 /* ── Header bar ──────────────────────────────────────────────────────────── */
 #header {
@@ -496,7 +508,7 @@ window {
 }
 
 #plan-label {
-    color: #b07fff;
+    color: #c499ff;
     font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.4px;
@@ -504,43 +516,52 @@ window {
 }
 
 #status-dot {
-    color: #22c55e;
+    color: #4ade80;
     font-size: 8px;
     margin-right: 1px;
 }
 
 #status-dot.error {
-    color: #ef4444;
+    color: #f87171;
 }
 
 #refresh-label {
-    color: rgba(255, 255, 255, 0.28);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 9px;
     font-family: monospace;
 }
 
 /* ── Content area ────────────────────────────────────────────────────────── */
 #content {
-    padding: 6px 11px 9px 11px;
+    padding: 6px 11px 7px 11px;
 }
 
 /* ── Individual metric rows ─────────────────────────────────────────────── */
 #metric-name {
-    color: rgba(255, 255, 255, 0.62);
+    color: rgba(255, 255, 255, 0.98);
     font-size: 10.5px;
+    font-weight: 600;
     font-family: "JetBrains Mono", "Fira Mono", monospace;
     margin-top: 5px;
 }
 
 #metric-value {
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 9px;
     font-family: monospace;
 }
 
+#metric-reset {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 10px;
+    font-family: monospace;
+    margin-top: 1px;
+    margin-bottom: 3px;
+}
+
 /* ── Progress bars ───────────────────────────────────────────────────────── */
 progressbar {
-    margin: 2px 0 0 0;
+    margin: 4px 0 6px 0;
 }
 
 progressbar trough {
@@ -567,8 +588,8 @@ progressbar.crit progress {
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 #reset-label {
-    color: rgba(255, 255, 255, 0.22);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 11px;
     font-family: monospace;
     margin-top: 7px;
 }
@@ -588,7 +609,7 @@ progressbar.crit progress {
 }
 
 #loading-label {
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.6);
     font-size: 10px;
     font-family: monospace;
     padding: 4px 0;
@@ -614,6 +635,7 @@ class ClaudeWidget(Gtk.Window):
         self.last_ok  = None          # datetime of last successful fetch
         self._drag_x  = 0             # For window drag tracking
         self._drag_y  = 0
+        self._refresh_timer_id = None # ID for GLib timer
 
         self._apply_css()
         self._build_ui()
@@ -629,15 +651,22 @@ class ClaudeWidget(Gtk.Window):
         GLib.idle_add(lambda: (self._init_api_and_fetch(), False)[1])
 
         # Periodic refresh timer
-        interval = max(60, self.config.get('refresh_interval', 300))
-        log.debug(f"Setting refresh timer to {interval}s")
-        GLib.timeout_add_seconds(interval, self._on_timer)
+        self._start_refresh_timer()
         
         # Update "X min ago" label every 60s
         GLib.timeout_add_seconds(60, self._update_age_label)
         
         # Heartbeat to confirm main loop is running
         GLib.timeout_add_seconds(5, self._heartbeat)
+
+    def _start_refresh_timer(self) -> None:
+        """Start or restart the periodic refresh timer."""
+        if self._refresh_timer_id:
+            GLib.source_remove(self._refresh_timer_id)
+        
+        interval = max(60, self.config.get('refresh_interval', 300))
+        log.debug(f"Starting refresh timer: {interval}s")
+        self._refresh_timer_id = GLib.timeout_add_seconds(interval, self._on_timer)
 
     def _heartbeat(self) -> bool:
         log.debug("GTK Main Loop heartbeat (still alive)")
@@ -673,6 +702,7 @@ class ClaudeWidget(Gtk.Window):
         self.set_skip_taskbar_hint(True)    # Hidden from taskbar
         self.set_skip_pager_hint(True)      # Hidden from pager / alt-tab
         self.stick()                        # All workspaces
+        self.set_keep_above(True)           # Always on top
 
         # Composite / RGBA for rounded corners + transparency
         screen = self.get_screen()
@@ -683,8 +713,9 @@ class ClaudeWidget(Gtk.Window):
             log.warning("RGBA visual not available — transparency will be disabled.")
 
         self.set_app_paintable(True)
-        # Use GtkWidget.set_opacity instead of GtkWindow.set_opacity
-        Gtk.Widget.set_opacity(self, self.config.get('opacity', 0.93))
+        # Keep global opacity at 1.0 for bright text, 
+        # transparency is handled by _on_draw background painting.
+        Gtk.Widget.set_opacity(self, 1.0)
 
         # Input events for drag + right-click menu
         self.add_events(
@@ -698,8 +729,11 @@ class ClaudeWidget(Gtk.Window):
         self.connect('destroy', Gtk.main_quit)
         self.connect('draw', self._on_draw)
 
-        # Fixed width; height is dynamic
-        self.set_size_request(self.config.get('widget_width', 230), -1)
+        # Fixed width; height is dynamic unless specified
+        self.set_size_request(
+            self.config.get('widget_width', 230),
+            self.config.get('widget_height', -1)
+        )
 
     def _on_draw(self, _widget, cr) -> bool:
         """Paint the window background so the RGBA visual renders visibly."""
@@ -707,8 +741,11 @@ class ClaudeWidget(Gtk.Window):
         visual = self.get_visual()
         is_rgba = visual and visual.get_depth() == 32
         
+        # Use opacity from config (default to 0.65) for the background alpha
+        alpha = self.config.get('opacity', 0.65)
+        
         if is_rgba:
-            cr.set_source_rgba(12/255, 11/255, 18/255, 0.95)
+            cr.set_source_rgba(12/255, 11/255, 18/255, alpha)
         else:
             cr.set_source_rgb(12/255, 11/255, 18/255)
             
@@ -850,8 +887,10 @@ class ClaudeWidget(Gtk.Window):
                 self._add_metric_row(metric)
 
         # ── Reset timer ───────────────────────────────────────────────────────
-        reset_str = self._format_reset(usage.get('reset_at'))
-        if reset_str:
+        shown_resets = {self._format_reset(m.get('reset_at')) for m in metrics if m.get('reset_at')}
+        reset_str    = self._format_reset(usage.get('reset_at'))
+        
+        if reset_str and reset_str not in shown_resets:
             # Divider
             div = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             div.set_name("divider")
@@ -886,12 +925,15 @@ class ClaudeWidget(Gtk.Window):
         # Format value string
         if limit and limit > 0:
             # Compact: "45/100" or "2.1/5 GB"
-            if unit:
+            if unit == "%":
+                val_str = f"{used}%"
+            elif unit:
                 val_str = f"{used}{unit}/{limit}{unit}"
             else:
                 val_str = f"{used}/{limit}"
+            
             if period:
-                val_str += f" /{period[:1]}"   # "/d" for day
+                val_str += f"/{period[:1]}"   # "/m" for mo
         elif used:
             val_str = f"{used}{unit}"
         else:
@@ -904,6 +946,16 @@ class ClaudeWidget(Gtk.Window):
         row.pack_start(name_lbl, True,  True,  0)
         row.pack_end  (val_lbl,  False, False, 0)
         self._content.pack_start(row, False, False, 0)
+
+        # ── Reset label (if available) ────────────────────────────────────────
+        reset_at = metric.get('reset_at')
+        if reset_at:
+            reset_str = self._format_reset(reset_at)
+            if reset_str:
+                res_lbl = Gtk.Label(label=reset_str)
+                res_lbl.set_name("metric-reset")
+                res_lbl.set_halign(Gtk.Align.START)
+                self._content.pack_start(res_lbl, False, False, 0)
 
         # ── Progress bar ──────────────────────────────────────────────────────
         bar = Gtk.ProgressBar()
@@ -1007,8 +1059,34 @@ class ClaudeWidget(Gtk.Window):
         """On drag end, persist new window position to config."""
         if event.button == 1:
             px, py = self.get_position()
-            self.config['position_x'] = px
-            self.config['position_y'] = py
+            
+            # Handle relative positioning logic from _position_window in reverse
+            display = Gdk.Display.get_default()
+            primary_monitor = display.get_primary_monitor() if display else None
+            if not primary_monitor and display:
+                primary_monitor = display.get_monitor(0)
+            
+            if primary_monitor:
+                geom = primary_monitor.get_geometry()
+                w    = self.config.get('widget_width', 230)
+                
+                # Check if current position is closer to right edge of THIS monitor
+                # than to the left edge of the virtual desktop (0,0).
+                # If the user previously used a negative X, they likely prefer it.
+                if self.config.get('position_x', 0) <= 0:
+                    # Calculate negative offset from right edge
+                    # final_x = geom.x + geom.width + px_config - w
+                    # px_config = final_x - (geom.x + geom.width) + w
+                    self.config['position_x'] = px - (geom.x + geom.width) + w
+                else:
+                    self.config['position_x'] = px - geom.x
+                
+                self.config['position_y'] = py - geom.y
+            else:
+                self.config['position_x'] = px
+                self.config['position_y'] = py
+
+            log.debug(f"Widget dragged to {px}, {py}. Saving config as {self.config['position_x']}, {self.config['position_y']}")
             save_config(self.config)
 
     def _on_motion(self, widget, event: Gdk.EventMotion) -> None:
@@ -1115,12 +1193,24 @@ class ClaudeWidget(Gtk.Window):
             self.config['position_y']       = spin_y.get_value_as_int()
             self.config['widget_width']     = spin_w.get_value_as_int()
             self.config['opacity']          = round(scale_op.get_value(), 2)
-            self.config['refresh_interval'] = max(60, spin_r.get_value_as_int())
+            
+            old_refresh = self.config.get('refresh_interval', 300)
+            new_refresh = max(60, spin_r.get_value_as_int())
+            self.config['refresh_interval'] = new_refresh
 
+            # Persist to disk
             save_config(self.config)
+
+            # Apply UI changes
             self._position_window()
             self.set_size_request(self.config['widget_width'], -1)
-            Gtk.Widget.set_opacity(self, self.config['opacity'])
+            
+            # Restart timer if refresh interval changed
+            if new_refresh != old_refresh:
+                self._start_refresh_timer()
+            
+            # Redraw window to update background transparency
+            self.queue_draw()
 
         dialog.destroy()
 
@@ -1146,12 +1236,22 @@ def _format_reset(reset_at: str | None) -> str:
 
         if secs <= 0:
             return "Resetting…"
+        
         h, rem = divmod(int(secs), 3600)
         m      = rem // 60
-        if h > 23:
-            d = h // 24
-            return f"Resets in {d}d {h % 24}h"
-        return f"Resets in {h}h {m:02d}m"
+        
+        # 1. Under 24h: "Resets in 3h 19m"
+        if h < 24:
+            if h == 0:
+                return f"Resets in {m}m"
+            return f"Resets in {h}h {m}m"
+
+        # 2. Under 7 days: "Resets Thu 1:30 PM"
+        if h < 24 * 7:
+            return f"Resets {dt.strftime('%a %-I:%M %p')}"
+
+        # 3. Further out: "Resets May 1"
+        return f"Resets {dt.strftime('%b %-d')}"
     except Exception as e:
         log.debug(f"Could not parse reset_at '{reset_at}': {e}")
         return ""
@@ -1210,9 +1310,15 @@ def _build_tui_renderable(usage, last_ok, error_msg):
 
         # Value string (matches GTK widget format)
         if limit and limit > 0:
-            val_str  = f"{used}{unit}/{limit}{unit}" if unit else f"{used}/{limit}"
+            if unit == "%":
+                val_str = f"{used}%"
+            elif unit:
+                val_str = f"{used}{unit}/{limit}{unit}"
+            else:
+                val_str = f"{used}/{limit}"
+            
             if period:
-                val_str += f" /{period[:1]}"
+                val_str += f"/{period[:1]}"
             fraction = min(float(used) / float(limit), 1.0)
         else:
             val_str  = f"{used}{unit}" if used else "—"
@@ -1220,7 +1326,7 @@ def _build_tui_renderable(usage, last_ok, error_msg):
 
         # Label line
         name_line = Text()
-        name_line.append(label, style="dim white")
+        name_line.append(label, style="white")
         lines.append(name_line)
 
         # Progress bar + value line
@@ -1228,15 +1334,26 @@ def _build_tui_renderable(usage, last_ok, error_msg):
         bar_text = "█" * filled + "░" * (20 - filled)
         bar_line = Text()
         bar_line.append(bar_text, style=f"bold {_bar_style(fraction)}")
-        bar_line.append(f"  {val_str}", style="dim white")
+        bar_line.append(f"  {val_str}", style="white")
         lines.append(bar_line)
 
+        # Per-metric reset
+        reset_at = metric.get('reset_at')
+        if reset_at:
+            reset_str = _format_reset(reset_at)
+            if reset_str:
+                res_line = Text()
+                res_line.append(f"  {reset_str}", style="white italic")
+                lines.append(res_line)
+
     # Reset countdown footer
-    reset_str = _format_reset(usage.get('reset_at'))
-    if reset_str:
+    shown_resets = {_format_reset(m.get('reset_at')) for m in usage.get('metrics', []) if m.get('reset_at')}
+    reset_str    = _format_reset(usage.get('reset_at'))
+
+    if reset_str and reset_str not in shown_resets:
         lines.append(Text(""))
         footer = Text(justify="right")
-        footer.append(reset_str, style="dim white")
+        footer.append(reset_str, style="white")
         lines.append(footer)
 
     title = Text()
@@ -1381,6 +1498,13 @@ def run_setup() -> None:
             config['position_y'] = int(input("  Y position (px from top):  "))
         except ValueError:
             print("  Invalid input; using default position.")
+
+    height_ans = input("Set a fixed widget height? (Enter px, or leave blank for auto): ").strip()
+    if height_ans:
+        try:
+            config['widget_height'] = int(height_ans)
+        except ValueError:
+            print("  Invalid input; using auto-height.")
 
     save_config(config)
     print(f"\n✓ Config saved to {CONFIG_FILE}")

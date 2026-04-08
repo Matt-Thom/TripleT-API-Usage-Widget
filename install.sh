@@ -140,6 +140,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
   "position_x": -15,
   "position_y": 50,
   "widget_width": 230,
+  "widget_height": -1,
   "opacity": 0.93,
   "debug": false
 }
