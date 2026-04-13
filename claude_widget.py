@@ -349,7 +349,7 @@ class ClaudeAPIClient:
             if isinstance(data, dict) and 'utilization' in data:
                 metrics.append({
                     "label":  label,
-                    "used":   round(data['utilization'], 1),
+                    "used":   round(data.get('utilization') or 0, 1),
                     "limit":  100,
                     "unit":   "%",
                     "period": "",
@@ -361,8 +361,8 @@ class ClaudeAPIClient:
         if isinstance(extra, dict) and extra.get('is_enabled'):
             metrics.append({
                 "label":  "Extra Usage",
-                "used":   round(extra.get('used_credits', 0), 0),
-                "limit":  round(extra.get('monthly_limit', 0), 0),
+                "used":   round(extra.get('used_credits') or 0, 0),
+                "limit":  round(extra.get('monthly_limit') or 0, 0),
                 "unit":   "",
                 "period": "mo",
                 "reset_at": extra.get('resets_at') or extra.get('reset_at')
@@ -381,8 +381,8 @@ class ClaudeAPIClient:
             if used_k in raw or limit_k in raw:
                 metrics.append({
                     "label":  label,
-                    "used":   raw.get(used_k,  0),
-                    "limit":  raw.get(limit_k, 0),
+                    "used":   raw.get(used_k) or 0,
+                    "limit":  raw.get(limit_k) or 0,
                     "unit":   "",
                     "period": period,
                     "reset_at": raw.get('reset_at') or raw.get('resets_at')
@@ -399,8 +399,8 @@ class ClaudeAPIClient:
             if used_k in raw or limit_k in raw:
                 metrics.append({
                     "label":  "Projects",
-                    "used":   raw.get(used_k,  0),
-                    "limit":  raw.get(limit_k, 0),
+                    "used":   raw.get(used_k) or 0,
+                    "limit":  raw.get(limit_k) or 0,
                     "unit":   "",
                     "period": "",
                 })
@@ -417,8 +417,8 @@ class ClaudeAPIClient:
                 divisor = 1_073_741_824 if from_bytes else 1
                 metrics.append({
                     "label":  "Storage",
-                    "used":   round(raw.get(used_k,  0) / divisor, 2),
-                    "limit":  round(raw.get(limit_k, 0) / divisor, 2),
+                    "used":   round((raw.get(used_k) or 0) / divisor, 2),
+                    "limit":  round((raw.get(limit_k) or 0) / divisor, 2),
                     "unit":   "GB",
                     "period": "",
                 })
@@ -426,8 +426,8 @@ class ClaudeAPIClient:
 
         # ── Knowledge / context ───────────────────────────────────────────────
         if 'context_window_used' in raw or 'context_tokens_used' in raw:
-            k_used  = raw.get('context_window_used') or raw.get('context_tokens_used', 0)
-            k_limit = raw.get('context_window_limit') or raw.get('context_tokens_limit', 0)
+            k_used  = raw.get('context_window_used') or raw.get('context_tokens_used') or 0
+            k_limit = raw.get('context_window_limit') or raw.get('context_tokens_limit') or 0
             if k_limit > 0:
                 metrics.append({
                     "label":  "Context",
@@ -1012,14 +1012,19 @@ class ClaudeWidget(Gtk.Window):
             save_config(self.config)
 
         # ── Fetch usage ───────────────────────────────────────────────────
-        usage = self.api.fetch_usage()
-        if usage:
-            self.usage   = usage
-            self.last_ok = datetime.now()
-            GLib.idle_add(lambda: (self._render_usage(usage), False)[1])
-            GLib.idle_add(lambda: (self._update_age_label(), False)[1])
-        else:
-            GLib.idle_add(lambda: (self._show_error("Usage fetch failed.\nRun --dump-api for details.\n" f"Log: {LOG_FILE}"), False)[1])
+        try:
+            usage = self.api.fetch_usage()
+            if usage:
+                self.usage   = usage
+                self.last_ok = datetime.now()
+                GLib.idle_add(lambda: (self._render_usage(usage), False)[1])
+                GLib.idle_add(lambda: (self._update_age_label(), False)[1])
+            else:
+                log.error("Fetch failed (no usage data)")
+                GLib.idle_add(lambda: (self._show_error("Usage fetch failed.\nRun --dump-api for details.\n" f"Log: {LOG_FILE}"), False)[1])
+        except Exception as e:
+            log.exception(f"Exception in thread {threading.current_thread().name}")
+            GLib.idle_add(lambda: (self._show_error(f"Error in refresh thread: {str(e)}"), False)[1])
 
     def _on_timer(self) -> bool:
         """Periodic GLib timer callback — trigger a background refresh."""
