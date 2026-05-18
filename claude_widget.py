@@ -152,23 +152,33 @@ CLAUDE_BASE = "https://claude.ai"
 
 # Mimic a real browser to avoid 403/bot detection
 # Modern browsers send "Client Hints" (sec-ch-ua) which are checked by Cloudflare
-BROWSER_HEADERS = {
-    "User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+if sys.platform == 'darwin':
+    BROWSER_HEADERS = {
+        "User-Agent":       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "Sec-CH-UA-Platform": '"macOS"',
+    }
+else:
+    BROWSER_HEADERS = {
+        "User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "Sec-CH-UA-Platform": '"Linux"',
+    }
+
+BROWSER_HEADERS.update({
     "Accept":           "application/json, text/plain, */*",
     "Accept-Language":  "en-US,en;q=0.9",
     "Referer":          "https://claude.ai/chats",
     "Origin":           "https://claude.ai",
     "Sec-CH-UA":        '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
     "Sec-CH-UA-Mobile": "?0",
-    "Sec-CH-UA-Platform": '"Linux"',
     "Sec-Fetch-Dest":   "empty",
     "Sec-Fetch-Mode":   "cors",
     "Sec-Fetch-Site":   "same-origin",
     "DNT":              "1",
     "Upgrade-Insecure-Requests": "1",
     "Connection":       "keep-alive",
-}
+})
 
 
 class ClaudeAPIClient:
@@ -693,7 +703,14 @@ class ClaudeWidget(Gtk.Window):
         self.set_title("Claude Usage")
         self.set_decorated(False)           # No titlebar
         self.set_resizable(False)
-        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)  # Better than DOCK for visibility
+        
+        # macOS specific hints
+        if sys.platform == 'darwin':
+            self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
+            # On macOS, UTILITY might make it float on all spaces but sometimes 
+            # behaves like a normal window in the taskbar/dock.
+        else:
+            self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         
         # Troubleshooting: Commenting out set_keep_below to ensure visibility.
         # If the widget is hidden behind desktop icons or wallpaper, this is likely why.
@@ -1601,3 +1618,4 @@ Examples:
 
 if __name__ == '__main__':
     main()
+
