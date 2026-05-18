@@ -2,6 +2,11 @@
 # start_local.sh — Claude Usage Widget Local Launcher
 # Uses 'uv' for fast environment management and dependency installation.
 
+# Ensure the script is run with bash
+if [ -z "$BASH_VERSION" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 # ── Colours ────────────────────────────────────────────────────────────────

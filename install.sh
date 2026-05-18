@@ -2,6 +2,11 @@
 # install.sh — Claude Usage Widget Installer
 # Installs the widget and its dependencies securely using 'uv'.
 
+# Ensure the script is run with bash
+if [ -z "$BASH_VERSION" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
